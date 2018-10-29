@@ -21,9 +21,11 @@
 package org.interactiverobotics.map_reduce_demo;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Main application class.
@@ -32,20 +34,40 @@ public class Main {
 
     private static Map<String, List<Long>> data = new HashMap<>();
 
-    public static void main(final String[] args) {
+    public static void main(final String[] args) throws InterruptedException {
 
-        WordCounterMap.map("abc abc xyz", Main::put);
+        final List<String> documents = Arrays.asList("abc abc xyz", "abc def xyz");
 
-        data.forEach((key, values) -> WordCounterReduce.reduce(key, values, Main::print));
+        final CountDownLatch countDownLatch = new CountDownLatch(documents.size());
+        documents.forEach(document ->
+                new Thread(() -> {
+                    System.out.println("Process document '" + document + "'."
+                            + " Thread Id: " + Thread.currentThread().getId());
+
+                    WordCounterMap.map(document, Main::put);
+
+                    countDownLatch.countDown();
+                }).start());
+        countDownLatch.await();
+
+        data.forEach((key, values) ->
+                new Thread(() ->
+
+                        WordCounterReduce.reduce(key, values, Main::print)
+
+                ).start());
     }
 
     private static void put(final String key, final Long value) {
-        final List<Long> values = data.getOrDefault(key, new ArrayList<>());
-        values.add(value);
-        data.put(key, values);
+        synchronized (data) {
+            final List<Long> values = data.getOrDefault(key, new ArrayList<>());
+            values.add(value);
+            data.put(key, values);
+        }
     }
 
     private static void print(final String key, final Long value) {
-        System.out.println("Word '" + key + "' occurred " + value + " time(s)");
+        System.out.println("Word '" + key + "' occurred " + value + " time(s)."
+                + " Thread Id: " + Thread.currentThread().getId());
     }
 }
